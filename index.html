@@ -18,7 +18,6 @@
         /* Barras de rolagem ficam ocultas, mas a rolagem continua funcionando. */
         * { scrollbar-width: none; }
         *::-webkit-scrollbar { width: 0; height: 0; display: none; }
-
         .reaction-stage { position: relative; min-height: 300px; }
         .reaction-stage::after {
             content: '';
@@ -66,10 +65,8 @@
             font-weight: 800;
             letter-spacing: -0.06em;
         }
-
         .compound-card { position:relative; }
         .compound-badge { font-size:8px; letter-spacing:.04em; text-transform:uppercase; }
-
         /* Navegação inferior: os dois modos ficam centralizados e acima do grimório. */
         nav {
             flex-shrink: 0;
@@ -504,11 +501,9 @@
             tennessine: 'Halogênio superpesado artificial, extremamente instável e produzido em laboratório.',
             oganesson: 'Gás nobre superpesado artificial, extremamente instável e conhecido apenas por poucos átomos.'
         };
-
         ELEMENTS.forEach(el => {
             if (!el.desc && ELEMENT_DESCRIPTIONS[el.id]) el.desc = ELEMENT_DESCRIPTIONS[el.id];
         });
-
         const RECIPES = [
             // ==================== FUNDAMENTOS / FÍSICA ====================
             // Reações de núcleo são tratadas como "transmutação" de gameplay:
@@ -516,7 +511,6 @@
             // uma reação química comum.
             { ingredients: ['proton', 'electron'], result: 'hydrogen' },
             { ingredients: ['fusion', 'hydrogen'], result: 'helium' },
-
             // ==================== QUÍMICA INORGÂNICA ====================
             { ingredients: ['hydrogen', 'oxygen'], result: 'water' },
             { ingredients: ['hydrogen', 'nitrogen'], result: 'ammonia' },
@@ -535,7 +529,6 @@
             { ingredients: ['calcium', 'carbon_dioxide'], result: 'calcium_carbonate' },
             { ingredients: ['silicon', 'oxygen'], result: 'silicon_dioxide' },
             { ingredients: ['oxygen', 'electricity'], result: 'ozone' },
-
             // ==================== QUÍMICA ORGÂNICA ====================
             { ingredients: ['carbon', 'hydrogen'], result: 'methane' },
             { ingredients: ['methane', 'oxygen'], result: 'carbon_monoxide' },
@@ -547,12 +540,10 @@
             { ingredients: ['urea', 'heat'], result: 'caffeine' },
             { ingredients: ['acetic_acid', 'benzene'], result: 'aspirin' },
             { ingredients: ['carbon_dioxide', 'water'], result: 'glucose' },
-
             // ==================== ROTAS ALTERNATIVAS / PROCESSOS ====================
             { ingredients: ['methane', 'heat'], result: 'carbon' },
             { ingredients: ['water', 'heat'], result: 'hydrogen' },
             { ingredients: ['salt', 'electricity'], result: 'sodium' },
-
             // ==================== TRANSMUTAÇÃO NUCLEAR ====================
             // A partir daqui, Fusão, Calor e Protón são processos especiais do jogo. As combinações
             // não pretendem representar reações químicas reais: elas simbolizam
@@ -785,7 +776,6 @@
             updateProgress();
             playSound('select');
         }
-
         /* ==================== CORE MECHANICS ==================== */
         function addToReactor(elementId) {
             playSound('select');
@@ -841,16 +831,13 @@
         function synthesize() {
             const [ingA, ingB] = state.reactor;
             if (!ingA || !ingB) { playSound('fail'); return; }
-
             const sortedInput = [ingA, ingB].sort();
             const match = RECIPES.find(r => {
                 const sortedReq = [...r.ingredients].sort();
                 return sortedReq[0] === sortedInput[0] && sortedReq[1] === sortedInput[1];
             });
-
             const resultEl = match ? ELEMENTS.find(e => e.id === match.result) : null;
             const validResult = !!resultEl;
-
             // A colisão acontece antes de qualquer resultado aparecer.
             runReactionAnimation(validResult, () => {
                 if (validResult) {
@@ -859,13 +846,11 @@
                     saveGame();
                     playSound('success');
                     spawnBurstParticles();
-
                     if (wasNew) {
                         showDiscoveryModal(resultEl, [ingA, ingB]);
                     } else {
                         showReactionMessage(resultEl, [ingA, ingB]);
                     }
-
                     state.reactor = [null, null];
                     updateReactorUI();
                     renderElementsGrid();
@@ -877,21 +862,17 @@
                 }
             });
         }
-
         function runReactionAnimation(success, callback) {
             const stage = document.getElementById('reaction-stage');
             const left = document.getElementById('slot-0');
             const right = document.getElementById('slot-1');
             const core = document.getElementById('reaction-core');
-
             stage.classList.remove('reacting', 'success', 'fail');
             void stage.offsetWidth;
             stage.classList.add('reacting', success ? 'success' : 'fail');
-
             left.classList.add('reactor-collision-left');
             right.classList.add('reactor-collision-right');
             core.className = `reaction-core ${success ? 'success' : 'fail'}`;
-
             window.setTimeout(() => {
                 left.classList.remove('reactor-collision-left');
                 right.classList.remove('reactor-collision-right');
@@ -900,7 +881,6 @@
                 callback();
             }, 760);
         }
-
         function showReactionMessage(el, ingredients) {
             const modal = document.getElementById('modal-discovery');
             modal.innerHTML = `
@@ -918,7 +898,6 @@
                 </div>`;
             modal.classList.remove('hidden');
         }
-
         /* ==================== UI ==================== */
         function renderCategoryTabs() {
             const container = document.getElementById('category-tabs');
@@ -971,14 +950,12 @@
             modal.classList.remove('hidden');
             generateHint();
         }
-
         function closeHint(play = true) {
             const modal = document.getElementById('modal-hint');
             if (!modal) return;
             modal.classList.add('hidden');
             if (play) playSound('select');
         }
-
         function showDiscoveryModal(el, ingredients) {
             const modal = document.getElementById('modal-discovery');
             modal.innerHTML = `
@@ -1002,12 +979,10 @@
         function showElementInfo(id) {
             const el = ELEMENTS.find(e => e.id === id);
             if (!el || !state.unlocked.has(id)) return;
-
             playSound('select');
             const category = CATEGORIES[el.category] || CATEGORIES.FUNDAMENTAL;
             const modal = document.getElementById('modal-element-info');
             const card = document.getElementById('element-info-card');
-
             card.innerHTML = `
                 <div class="flex items-center justify-between mb-4">
                     <div>
@@ -1018,7 +993,6 @@
                         <i class="fa-solid fa-xmark"></i>
                     </button>
                 </div>
-
                 <div class="flex items-center gap-4 mb-4">
                     <div class="w-28 h-28 rounded-2xl border-2 ${category.color} bg-slate-900/90 flex flex-col justify-between items-center p-3 shrink-0">
                         <span class="text-[10px] text-slate-400">${el.number ? '#' + el.number : 'COMPOSTO'}</span>
@@ -1031,23 +1005,19 @@
                         ${el.number ? `<div class="text-[9px] font-orbitron text-slate-500 uppercase mt-3 mb-1">Número atômico</div><div class="text-xs font-bold text-slate-200">${el.number}</div>` : ''}
                     </div>
                 </div>
-
                 <div class="rounded-xl bg-slate-950/60 border border-slate-800 p-3">
                     <div class="text-[9px] font-orbitron tracking-widest text-cyan-400 uppercase mb-2">SOBRE</div>
                     <p class="text-xs text-slate-300 leading-relaxed">${el.desc || 'Nenhuma descrição disponível para esta descoberta.'}</p>
                 </div>
-
                 <button onclick="closeElementInfo()" class="w-full mt-4 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-orbitron text-xs font-black">
                     VOLTAR À TABELA
                 </button>
             `;
             modal.classList.remove('hidden');
         }
-
         function closeElementInfo() {
             document.getElementById('modal-element-info').classList.add('hidden');
         }
-
         function renderGrimoire() {
             const container = document.getElementById('grimoire-list');
             let html = '';
@@ -1084,28 +1054,23 @@
         let hintIndex = 0;
         function generateHint() {
             playSound('select');
-
             const validRecipes = RECIPES.filter(r =>
                 ELEMENTS.some(e => e.id === r.result) &&
                 ELEMENTS.some(e => e.id === r.ingredients[0]) &&
                 ELEMENTS.some(e => e.id === r.ingredients[1])
             );
-
             const locked = validRecipes.filter(r => !state.unlocked.has(r.result));
             const available = locked.filter(r =>
                 state.unlocked.has(r.ingredients[0]) &&
                 state.unlocked.has(r.ingredients[1])
             );
-
             const textEl = document.getElementById('hint-text');
             const optionsEl = document.getElementById('hint-options');
-
             if (!locked.length) {
                 textEl.innerHTML = '<strong class="text-emerald-300">Parabéns!</strong><br>Você já descobriu todos os itens desta versão.';
                 optionsEl.innerHTML = '';
                 return;
             }
-
             if (available.length) {
                 // Uma receita por resultado, sempre exatamente igual à que synthesize() usa.
                 const unique = available.filter((r, i, arr) =>
@@ -1113,16 +1078,13 @@
                 );
                 const choice = unique[hintIndex % unique.length];
                 hintIndex++;
-
                 const a = ELEMENTS.find(e => e.id === choice.ingredients[0]);
                 const b = ELEMENTS.find(e => e.id === choice.ingredients[1]);
                 const result = ELEMENTS.find(e => e.id === choice.result);
-
                 textEl.innerHTML = `Tente <strong class="text-cyan-300">${a.name} + ${b.name}</strong> <span class="text-slate-500">→</span> <strong class="text-emerald-300">${result.name} (${result.symbol})</strong>.`;
                 optionsEl.innerHTML = '';
                 return;
             }
-
             // Não há receita executável agora: mostra uma rota futura sem inventar resultado.
             const next = locked.find(r => state.unlocked.has(r.ingredients[0]) || state.unlocked.has(r.ingredients[1]));
             if (next) {
@@ -1137,7 +1099,6 @@
             }
             optionsEl.innerHTML = '';
         }
-
         /* ==================== PARTICLES ==================== */
         let canvas, ctx, particles = [];
         function initCanvasParticles() {
