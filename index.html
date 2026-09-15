@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="h-full w-full overflow-hidden">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Periodic Alchemy - Doodle Chemistry</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&amp;family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+        body { font-family: 'Rajdhani', sans-serif; background: #070913; color: #e2e8f0; height: 100vh; width: 100vw; overflow: hidden; position: fixed; }
+        .font-orbitron { font-family: 'Orbitron', sans-serif; }
+        .glass-panel { background: rgba(15,23,42,0.75); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
+        .glow-cyan { box-shadow: 0 0 15px rgba(6,182,212,0.4); }
+        #particle-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 40; }
+        /* Barras de rolagem ficam ocultas, mas a rolagem continua funcionando. */
+        * { scrollbar-width: none; }
+        *::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+        .reaction-stage { position: relative; min-height: 300px; }
+        .reaction-stage::after {
+            content: '';
+            position: absolute;
+            inset: 12% 18%;
+            pointer-events: none;
+            border-radius: 999px;
+            opacity: 0;
+            transform: scale(.2);
+            z-index: 8;
+        }
+        .reaction-stage.reacting::after {
+            animation: reaction-flash .72s ease-out both;
+        }
+        .reaction-stage.reacting.success::after {
+            background: radial-gradient(circle, rgba(103,232,249,.9) 0%, rgba(59,130,246,.45) 22%, rgba(99,102,241,.18) 48%, transparent 72%);
+            box-shadow: 0 0 70px rgba(34,211,238,.75), inset 0 0 45px rgba(129,140,248,.45);
+        }
+        .reaction-stage.reacting.fail::after {
+            background: radial-gradient(circle, rgba(248,113,113,.95) 0%, rgba(239,68,68,.5) 22%, rgba(127,29,29,.2) 48%, transparent 72%);
+            box-shadow: 0 0 70px rgba(239,68,68,.72), inset 0 0 45px rgba(248,113,113,.45);
+        }
+        .reactor-collision-left { animation: collide-left .62s cubic-bezier(.2,.8,.25,1) both; }
+        .reactor-collision-right { animation: collide-right .62s cubic-bezier(.2,.8,.25,1) both; }
+        .reaction-core {
+            position: absolute; left: 50%; top: 50%; width: 16px; height: 16px;
+            margin: -8px; border-radius: 50%; opacity: 0; pointer-events: none; z-index: 9;
+        }
+        .reaction-core.success { background: #67e8f9; box-shadow: 0 0 10px #67e8f9, 0 0 35px #38bdf8, 0 0 75px #6366f1; animation: core-burst .72s ease-out both; }
+        .reaction-core.fail { background: #f87171; box-shadow: 0 0 10px #f87171, 0 0 35px #ef4444, 0 0 75px #991b1b; animation: core-burst .72s ease-out both; }
+        @keyframes collide-left { 0%{transform:translateX(0) scale(1)} 55%{transform:translateX(38px) scale(1.03)} 100%{transform:translateX(42px) scale(.92)} }
+        @keyframes collide-right { 0%{transform:translateX(0) scale(1)} 55%{transform:translateX(-38px) scale(1.03)} 100%{transform:translateX(-42px) scale(.92)} }
+        @keyframes reaction-flash { 0%{opacity:0;transform:scale(.2)} 42%{opacity:1;transform:scale(1)} 100%{opacity:0;transform:scale(1.5)} }
+        @keyframes core-burst { 0%{opacity:0;transform:scale(.2)} 35%{opacity:1;transform:scale(1)} 100%{opacity:0;transform:scale(18)} }
+        .element-formula {
+            display: block;
+            width: 100%;
+            max-width: 100%;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: clip;
+            line-height: 1;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 800;
+            letter-spacing: -0.06em;
+        }
+
+        .compound-card { position:relative; }
+        .compound-badge { font-size:8px; letter-spacing:.04em; text-transform:uppercase; }
+
+        /* Navegação inferior: os dois modos ficam centralizados e acima do grimório. */
+        nav {
+            flex-shrink: 0;
+            position: relative;
+            z-index: 40 !important;
+        }
+        nav button {
+            flex-shrink: 0;
+        }
+        #modal-periodic {
+            z-index: 30;
+            bottom: 3.5rem;
+        }
+    </style>
+</head>
+<body class="flex flex-col h-full w-full justify-between bg-slate-950 text-slate-100 relative">
+    <canvas id="particle-canvas"></canvas>
+    <header class="h-14 glass-panel px-4 flex items-center justify-between border-b border-slate-800 z-10">
+        <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center">
+                <i class="fa-solid font-orbitron text-xs">PA</i>
+            </div>
+            <div>
+                <h1 class="font-orbitron font-extrabold text-sm tracking-wider bg-gradient-to-r from-cyan-400 to-indigo-400 bg-clip-text text-transparent">PERIODIC ALCHEMY</h1>
+                <p class="text-[10px] text-slate-400">DOODLE CHEMISTRY LAB</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            <button onclick="openHint()" aria-label="Abrir dica" title="Dica" class="w-8 h-8 rounded-full glass-button flex items-center justify-center text-amber-300 hover:text-amber-200 hover:border-amber-400/50 transition-all">
+                <i class="fa-solid fa-lightbulb text-xs"></i>
+            </button>
+            <div class="px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-700/60 flex items-center gap-1 text-xs font-semibold">
+                <i class="fa-solid fa-flask text-cyan-400"></i>
+                <span id="progress-text" class="text-cyan-300 font-orbitron">0/0</span>
+            </div>
+            <button onclick="toggleAudio()" class="w-8 h-8 rounded-full glass-button flex items-center justify-center text-slate-300">
+                <i id="audio-icon" class="fa-solid fa-volume-high text-xs"></i>
+            </button>
+            <button onclick="confirmReset()" class="w-8 h-8 rounded-full glass-button flex items-center justify-center text-slate-400">
+                <i class="fa-solid fa-rotate-right text-xs"></i>
+            </button>
+        </div>
+    </header>
+
+    <main id="main-view" class="flex-1 relative flex flex-col justify-between p-3 gap-2 overflow-hidden z-10">
+        <!-- REATOR -->
+        <div id="reaction-stage" class="reaction-stage flex-1 flex flex-col items-center justify-center relative min-h-0">
+            <div id="reaction-core" class="reaction-core"></div>
+            <div class="w-full max-w-sm flex flex-col items-center gap-3">
+                <div id="reactor-slots" class="flex items-center justify-center gap-2 w-full">
+                    <div id="slot-0" onclick="removeFromReactor(0)" class="w-20 h-24 sm:w-24 sm:h-28 rounded-xl border-2 border-dashed border-slate-700/80 bg-slate-900/40 flex flex-col items-center justify-center cursor-pointer hover:border-cyan-500/50">
+                        <span class="text-[10px] text-slate-500 font-orbitron uppercase">SLOT A</span>
+                        <div class="slot-content flex flex-col items-center justify-center w-full h-full"><i class="fa-solid fa-plus text-slate-700 text-lg"></i></div>
+                    </div>
+                    <div class="text-cyan-500/60 font-orbitron text-xl font-bold">+</div>
+                    <div id="slot-1" onclick="removeFromReactor(1)" class="w-20 h-24 sm:w-24 sm:h-28 rounded-xl border-2 border-dashed border-slate-700/80 bg-slate-900/40 flex flex-col items-center justify-center cursor-pointer hover:border-cyan-500/50">
+                        <span class="text-[10px] text-slate-500 font-orbitron uppercase">SLOT B</span>
+                        <div class="slot-content flex flex-col items-center justify-center w-full h-full"><i class="fa-solid fa-plus text-slate-700 text-lg"></i></div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 w-full px-4">
+                    <button onclick="clearReactor()" class="px-3 py-2.5 rounded-xl glass-button text-slate-400 hover:text-slate-200 text-xs font-semibold">LIMPAR</button>
+                    <button onclick="synthesize()" class="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 text-white font-orbitron text-xs font-extrabold">SINTETIZAR</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- DECK DE ELEMENTOS -->
+        <div class="h-56 sm:h-64 glass-panel rounded-2xl flex flex-col border border-slate-800 shadow-2xl mt-4">
+            <div id="category-tabs" class="flex items-center gap-1 p-1.5 overflow-x-auto border-b border-slate-800/80"></div>
+            <div id="elements-grid" class="flex-1 p-2.5 grid grid-cols-4 sm:grid-cols-10 gap-2 overflow-y-auto"></div>
+        </div>
+    </main>
+
+    <nav class="h-14 glass-panel border-t border-slate-800 px-4 flex items-center justify-center gap-10 sm:gap-16 z-40 relative">
+        <button onclick="switchTab('lab')" id="nav-lab" class="w-24 flex flex-col items-center justify-center gap-1 text-cyan-400"><i class="fa-solid fa-vial"></i><span class="text-[10px] font-orbitron whitespace-nowrap">LABORATÓRIO</span></button>
+        <button onclick="switchTab('periodic')" id="nav-periodic" class="w-24 flex flex-col items-center justify-center gap-1 text-slate-400 hover:text-slate-200"><i class="fa-solid fa-table-cells"></i><span class="text-[10px] font-orbitron whitespace-nowrap">TABELA</span></button>
+    </nav>
+
+    <!-- MODAIS -->
+    <div id="modal-discovery" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-50 hidden"></div>
+    <div id="modal-periodic" class="fixed inset-0 top-14 bottom-14 bg-slate-950/95 z-30 flex flex-col hidden p-3">
+        <div class="flex items-center justify-between mb-3">
+            <div>
+                <h2 class="font-orbitron font-extrabold text-cyan-300">TABELA / GRIMÓRIO</h2>
+                <p class="text-[10px] text-slate-500">Elementos e compostos já descobertos</p>
+            </div>
+            <button onclick="switchTab('lab')" class="w-9 h-9 rounded-xl glass-button text-slate-300"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div id="grimoire-list" class="flex-1 overflow-y-auto space-y-3 pr-1"></div>
+    </div>
+    <div id="modal-element-info" onclick="closeElementInfo()" class="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div id="element-info-card" onclick="event.stopPropagation()" class="w-full max-w-md glass-panel rounded-2xl p-5 border border-cyan-500/30 shadow-2xl animate-pop"></div>
+    </div>
+    <div id="modal-hint" onclick="closeHint()" class="fixed inset-0 bg-slate-950/65 backdrop-blur-sm z-40 flex items-start justify-end p-3 sm:p-5 hidden">
+        <div onclick="event.stopPropagation()" class="w-full max-w-sm mt-12 sm:mt-14 mr-0 sm:mr-2 glass-panel rounded-2xl p-4 border border-amber-500/30 shadow-2xl animate-pop">
+            <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-2">
+                    <div class="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
+                        <i class="fa-solid fa-lightbulb text-amber-300"></i>
+                    </div>
+                    <div>
+                        <h2 class="font-orbitron font-extrabold text-amber-300 text-sm">DICA DE LABORATÓRIO</h2>
+                        <p class="text-[9px] text-slate-500">Uma combinação que você pode tentar agora</p>
+                    </div>
+                </div>
+                <button onclick="closeHint()" aria-label="Fechar dica" class="w-8 h-8 rounded-xl glass-button text-slate-300"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="glass-panel rounded-xl p-3 border border-slate-800 text-center">
+                <p id="hint-text" class="text-sm text-slate-300 leading-relaxed min-h-12">Clique em GERAR DICA para receber uma combinação.</p>
+                <div id="hint-options" class="mt-3 space-y-2"></div>
+            </div>
+            <button onclick="generateHint()" class="w-full mt-3 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 text-slate-950 font-orbitron text-[11px] font-black">
+                <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> NOVA DICA
+            </button>
+        </div>
+    </div>
+
+    <div id="modal-reset" onclick="closeResetModal()" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4 hidden">
+        <div onclick="event.stopPropagation()" class="w-full max-w-sm glass-panel rounded-2xl p-5 border border-red-500/30 shadow-2xl animate-pop">
+            <div class="flex items-center gap-3 mb-3">
+                <div class="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center">
+                    <i class="fa-solid fa-rotate-right text-red-300"></i>
+                </div>
+                <div>
+                    <h2 class="font-orbitron font-extrabold text-red-300 text-sm">RESETAR PROGRESSO</h2>
+                    <p class="text-[10px] text-slate-500">Essa ação não pode ser desfeita.</p>
+                </div>
+            </div>
+            <p class="text-sm text-slate-300 leading-relaxed mb-5">Todo o progresso será apagado e o laboratório voltará ao estado inicial.</p>
+            <div class="flex gap-2">
+                <button onclick="closeResetModal()" class="flex-1 py-3 rounded-xl glass-button text-slate-300 font-orbitron text-[10px] font-bold">CANCELAR</button>
+                <button onclick="resetProgress()" class="flex-1 py-3 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 text-white font-orbitron text-[10px] font-black">RESETAR</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* ==================== DATABASE ==================== */
+        const CATEGORIES = {
+            FUNDAMENTAL: { id: 'FUNDAMENTAL', name: 'Fundamentais', color: 'border-indigo-500' },
+            NON_METAL: { id: 'NON_METAL', name: 'Não-Metais', color: 'border-cyan-400' },
+            NOBLE_GAS: { id: 'NOBLE_GAS', name: 'Gases Nobres', color: 'border-purple-400' },
+            ALKALI_METAL: { id: 'ALKALI_METAL', name: 'Metais Alcalinos', color: 'border-amber-400' },
+            TRANSITION_METAL: { id: 'TRANSITION_METAL', name: 'Metais Transição', color: 'border-emerald-400' },
+            LANTHANIDE: { id: 'LANTHANIDE', name: 'Lantanídeos', color: 'border-violet-400' },
+            ACTINIDE: { id: 'ACTINIDE', name: 'Actinídeos', color: 'border-fuchsia-400' },
+            INORGANIC_COMPOUND: { id: 'INORGANIC_COMPOUND', name: 'Compostos Inorgânicos', color: 'border-sky-300' },
+            ORGANIC_COMPOUND: { id: 'ORGANIC_COMPOUND', name: 'Compostos Orgânicos', color: 'border-rose-300' },
+            PHARMACEUTICAL: { id: 'PHARMACEUTICAL', name: 'Farmacêuticos', color: 'border-lime-300' }
+        };
+
+        const ELEMENTS = [
+            { id: 'proton', name: 'Próton', symbol: 'p⁺', category: 'FUNDAMENTAL', initial: true, number: 0 },
+            { id: 'electron', name: 'Elétron', symbol: 'e⁻', category: 'FUNDAMENTAL', initial: true, number: 0 },
+            { id: 'neutron', name: 'Nêutron', symbol: 'n⁰', category: 'FUNDAMENTAL', initial: true, number: 0 },
+            { id: 'heat', name: 'Calor', symbol: 'ΔT', category: 'FUNDAMENTAL', initial: true, number: 0 },
+            { id: 'electricity', name: 'Eletricidade', symbol: '⚡', category: 'FUNDAMENTAL', initial: true, number: 0 },
+            { id: 'fusion', name: 'Fusão Nuclear', symbol: '⚛️', category: 'FUNDAMENTAL', initial: true, number: 0 },
+            { id: 'hydrogen', name: 'Hidrogênio', symbol: 'H', number: 1, category: 'NON_METAL', initial: true },
+            { id: 'helium', name: 'Hélio', symbol: 'He', number: 2, category: 'NOBLE_GAS', initial: true },
+            { id: 'lithium', name: 'Lítio', symbol: 'Li', number: 3, category: 'ALKALI_METAL' },
+            { id: 'beryllium', name: 'Berílio', symbol: 'Be', number: 4, category: 'ALKALI_METAL' },
+            { id: 'boron', name: 'Boro', symbol: 'B', number: 5, category: 'NON_METAL' },
+            { id: 'carbon', name: 'Carbono', symbol: 'C', number: 6, category: 'NON_METAL', initial: true },
+            { id: 'nitrogen', name: 'Nitrogênio', symbol: 'N', number: 7, category: 'NON_METAL' },
+            { id: 'oxygen', name: 'Oxigênio', symbol: 'O', number: 8, category: 'NON_METAL' },
+            { id: 'fluorine', name: 'Flúor', symbol: 'F', number: 9, category: 'NON_METAL' },
+            { id: 'neon', name: 'Neônio', symbol: 'Ne', number: 10, category: 'NOBLE_GAS' },
+            { id: 'sodium', name: 'Sódio', symbol: 'Na', number: 11, category: 'ALKALI_METAL' },
+            { id: 'magnesium', name: 'Magnésio', symbol: 'Mg', number: 12, category: 'ALKALI_METAL' },
+            { id: 'aluminium', name: 'Alumínio', symbol: 'Al', number: 13, category: 'TRANSITION_METAL' },
+            { id: 'silicon', name: 'Silício', symbol: 'Si', number: 14, category: 'NON_METAL' },
+            { id: 'phosphorus', name: 'Fósforo', symbol: 'P', number: 15, category: 'NON_METAL' },
+            { id: 'sulfur', name: 'Enxofre', symbol: 'S', number: 16, category: 'NON_METAL' },
+            { id: 'chlorine', name: 'Cloro', symbol: 'Cl', number: 17, category: 'NON_METAL' },
+            { id: 'argon', name: 'Argônio', symbol: 'Ar', number: 18, category: 'NOBLE_GAS' },
+            { id: 'potassium', name: 'Potássio', symbol: 'K', number: 19, category: 'ALKALI_METAL' },
+            { id: 'calcium', name: 'Cálcio', symbol: 'Ca', number: 20, category: 'ALKALI_METAL' },
+            { id: 'scandium', name: 'Escândio', symbol: 'Sc', number: 21, category: 'TRANSITION_METAL' },
+            { id: 'titanium', name: 'Titânio', symbol: 'Ti', number: 22, category: 'TRANSITION_METAL' },
+            { id: 'vanadium', name: 'Vanádio', symbol: 'V', number: 23, category: 'TRANSITION_METAL' },
+            { id: 'chromium', name: 'Cromo', symbol: 'Cr', number: 24, category: 'TRANSITION_METAL' },
+            { id: 'manganese', name: 'Manganês', symbol: 'Mn', number: 25, category: 'TRANSITION_METAL' },
+            { id: 'iron', name: 'Ferro', symbol: 'Fe', number: 26, category: 'TRANSITION_METAL', initial: true },
+            { id: 'cobalt', name: 'Cobalto', symbol: 'Co', number: 27, category: 'TRANSITION_METAL' },
+            { id: 'nickel', name: 'Níquel', symbol: 'Ni', number: 28, category: 'TRANSITION_METAL' },
+            { id: 'copper', name: 'Cobre', symbol: 'Cu', number: 29, category: 'TRANSITION_METAL' },
+            { id: 'zinc', name: 'Zinco', symbol: 'Zn', number: 30, category: 'TRANSITION_METAL' },
+            { id: 'gallium', name: 'Gálio', symbol: 'Ga', number: 31, category: 'TRANSITION_METAL' },
+            { id: 'germanium', name: 'Germânio', symbol: 'Ge', number: 32, category: 'NON_METAL' },
+            { id: 'arsenic', name: 'Arsênio', symbol: 'As', number: 33, category: 'NON_METAL' },
+            { id: 'selenium', name: 'Selênio', symbol: 'Se', number: 34, category: 'NON_METAL' },
+            { id: 'bromine', name: 'Bromo', symbol: 'Br', number: 35, category: 'NON_METAL' },
+            { id: 'krypton', name: 'Kriptônio', symbol: 'Kr', number: 36, category: 'NOBLE_GAS' },
+            { id: 'rubidium', name: 'Rubídio', symbol: 'Rb', number: 37, category: 'ALKALI_METAL' },
+            { id: 'strontium', name: 'Estrôncio', symbol: 'Sr', number: 38, category: 'ALKALI_METAL' },
+            { id: 'yttrium', name: 'Ítrio', symbol: 'Y', number: 39, category: 'TRANSITION_METAL' },
+            { id: 'zirconium', name: 'Zircônio', symbol: 'Zr', number: 40, category: 'TRANSITION_METAL' },
+            { id: 'niobium', name: 'Nióbio', symbol: 'Nb', number: 41, category: 'TRANSITION_METAL' },
+            { id: 'molybdenum', name: 'Molibdênio', symbol: 'Mo', number: 42, category: 'TRANSITION_METAL' },
+            { id: 'technetium', name: 'Tecnécio', symbol: 'Tc', number: 43, category: 'TRANSITION_METAL' },
+            { id: 'ruthenium', name: 'Rútenio', symbol: 'Ru', number: 44, category: 'TRANSITION_METAL' },
+            { id: 'rhodium', name: 'Ródio', symbol: 'Rh', number: 45, category: 'TRANSITION_METAL' },
+            { id: 'palladium', name: 'Paládio', symbol: 'Pd', number: 46, category: 'TRANSITION_METAL' },
+            { id: 'silver', name: 'Prata', symbol: 'Ag', number: 47, category: 'TRANSITION_METAL' },
+            { id: 'cadmium', name: 'Cádmio', symbol: 'Cd', number: 48, category: 'TRANSITION_METAL' },
+            { id: 'indium', name: 'Índio', symbol: 'In', number: 49, category: 'TRANSITION_METAL' },
+            { id: 'tin', name: 'Estanho', symbol: 'Sn', number: 50, category: 'TRANSITION_METAL' },
+            { id: 'antimony', name: 'Antimônio', symbol: 'Sb', number: 51, category: 'NON_METAL' },
+            { id: 'tellurium', name: 'Telúrio', symbol: 'Te', number: 52, category: 'NON_METAL' },
+            { id: 'iodine', name: 'Iodo', symbol: 'I', number: 53, category: 'NON_METAL' },
+            { id: 'xenon', name: 'Xenônio', symbol: 'Xe', number: 54, category: 'NOBLE_GAS' },
+            { id: 'caesium', name: 'Césio', symbol: 'Cs', number: 55, category: 'ALKALI_METAL' },
+            { id: 'barium', name: 'Bário', symbol: 'Ba', number: 56, category: 'ALKALI_METAL' },
+            { id: 'lanthanum', name: 'Lantânio', symbol: 'La', number: 57, category: 'LANTHANIDE' },
+            { id: 'cerium', name: 'Cério', symbol: 'Ce', number: 58, category: 'LANTHANIDE' },
+            { id: 'praseodymium', name: 'Praseodímio', symbol: 'Pr', number: 59, category: 'LANTHANIDE' },
+            { id: 'neodymium', name: 'Neodímio', symbol: 'Nd', number: 60, category: 'LANTHANIDE' },
+            { id: 'promethium', name: 'Promécio', symbol: 'Pm', number: 61, category: 'LANTHANIDE' },
+            { id: 'samarium', name: 'Samário', symbol: 'Sm', number: 62, category: 'LANTHANIDE' },
+            { id: 'europium', name: 'Europio', symbol: 'Eu', number: 63, category: 'LANTHANIDE' },
+            { id: 'gadolinium', name: 'Gadolínio', symbol: 'Gd', number: 64, category: 'LANTHANIDE' },
+            { id: 'terbium', name: 'Terbium', symbol: 'Tb', number: 65, category: 'LANTHANIDE' },
+            { id: 'dysprosium', name: 'Disprósio', symbol: 'Dy', number: 66, category: 'LANTHANIDE' },
+            { id: 'holmium', name: 'Hólmio', symbol: 'Ho', number: 67, category: 'LANTHANIDE' },
+            { id: 'erbium', name: 'Érbio', symbol: 'Er', number: 68, category: 'LANTHANIDE' },
+            { id: 'thulium', name: 'Túlio', symbol: 'Tm', number: 69, category: 'LANTHANIDE' },
+            { id: 'ytterbium', name: 'Itérbio', symbol: 'Yb', number: 70, category: 'LANTHANIDE' },
+            { id: 'lutetium', name: 'Lutécio', symbol: 'Lu', number: 71, category: 'LANTHANIDE' },
+            { id: 'hafnium', name: 'Háfnio', symbol: 'Hf', number: 72, category: 'TRANSITION_METAL' },
+            { id: 'tantalum', name: 'Tântalo', symbol: 'Ta', number: 73, category: 'TRANSITION_METAL' },
+            { id: 'tungsten', name: 'Tungstênio', symbol: 'W', number: 74, category: 'TRANSITION_METAL' },
+            { id: 'rhenium', name: 'Rênio', symbol: 'Re', number: 75, category: 'TRANSITION_METAL' },
+            { id: 'osmium', name: 'Ósmio', symbol: 'Os', number: 76, category: 'TRANSITION_METAL' },
+            { id: 'iridium', name: 'Irídio', symbol: 'Ir', number: 77, category: 'TRANSITION_METAL' },
+            { id: 'platinum', name: 'Platina', symbol: 'Pt', number: 78, category: 'TRANSITION_METAL' },
+            { id: 'gold', name: 'Ouro', symbol: 'Au', number: 79, category: 'TRANSITION_METAL', initial: true },
+            { id: 'mercury', name: 'Mercúrio', symbol: 'Hg', number: 80, category: 'TRANSITION_METAL' },
+            { id: 'thallium', name: 'Tálio', symbol: 'Tl', number: 81, category: 'TRANSITION_METAL' },
+            { id: 'lead', name: 'Chumbo', symbol: 'Pb', number: 82, category: 'TRANSITION_METAL' },
+            { id: 'bismuth', name: 'Bismuto', symbol: 'Bi', number: 83, category: 'TRANSITION_METAL' },
+            { id: 'polonium', name: 'Polônio', symbol: 'Po', number: 84, category: 'NON_METAL' },
+            { id: 'astatine', name: 'Ástato', symbol: 'At', number: 85, category: 'NON_METAL' },
+            { id: 'radon', name: 'Rádio', symbol: 'Rn', number: 86, category: 'NOBLE_GAS' },
+            { id: 'francium', name: 'Frâncio', symbol: 'Fr', number: 87, category: 'ALKALI_METAL' },
+            { id: 'radium', name: 'Rádio', symbol: 'Ra', number: 88, category: 'ALKALI_METAL' },
+            { id: 'actinium', name: 'Actínio', symbol: 'Ac', number: 89, category: 'ACTINIDE' },
+            { id: 'thorium', name: 'Tório', symbol: 'Th', number: 90, category: 'ACTINIDE' },
+            { id: 'protactinium', name: 'Protactínio', symbol: 'Pa', number: 91, category: 'ACTINIDE' },
+            { id: 'uranium', name: 'Urânio', symbol: 'U', number: 92, category: 'ACTINIDE' },
+            { id: 'neptunium', name: 'Neptúnio', symbol: 'Np', number: 93, category: 'ACTINIDE' },
+            { id: 'plutonium', name: 'Plutônio', symbol: 'Pu', number: 94, category: 'ACTINIDE' },
+            { id: 'americium', name: 'Amerício', symbol: 'Am', number: 95, category: 'ACTINIDE' },
+            { id: 'curium', name: 'Cúrio', symbol: 'Cm', number: 96, category: 'ACTINIDE' },
+            { id: 'berkelium', name: 'Berkélio', symbol: 'Bk', number: 97, category: 'ACTINIDE' },
+            { id: 'californium', name: 'Califórnio', symbol: 'Cf', number: 98, category: 'ACTINIDE' },
+            { id: 'einsteinium', name: 'Einsteinio', symbol: 'Es', number: 99, category: 'ACTINIDE' },
+            { id: 'fermium', name: 'Fermium', symbol: 'Fm', number: 100, category: 'ACTINIDE' },
+            { id: 'mendelevium', name: 'Mendelevio', symbol: 'Md', number: 101, category: 'ACTINIDE' },
+            { id: 'nobelium', name: 'Nobélio', symbol: 'No', number: 102, category: 'ACTINIDE' },
+            { id: 'lawrencium', name: 'Lawrêncio', symbol: 'Lr', number: 103, category: 'ACTINIDE' },
+            { id: 'rutherfordium', name: 'Rutherfórdio', symbol: 'Rf', number: 104, category: 'TRANSITION_METAL' },
+            { id: 'dubnium', name: 'Dúbnio', symbol: 'Db', number: 105, category: 'TRANSITION_METAL' },
+            { id: 'seaborgium', name: 'Seabórgio', symbol: 'Sg', number: 106, category: 'TRANSITION_METAL' },
+            { id: 'bohrium', name: 'Bóhrio', symbol: 'Bh', number: 107, category: 'TRANSITION_METAL' },
+            { id: 'hassium', name: 'Hássio', symbol: 'Hs', number: 108, category: 'TRANSITION_METAL' },
+            { id: 'meitnerium', name: 'Meitnério', symbol: 'Mt', number: 109, category: 'TRANSITION_METAL' },
+            { id: 'darmstadtium', name: 'Darmstádio', symbol: 'Ds', number: 110, category: 'TRANSITION_METAL' },
+            { id: 'roentgenium', name: 'Roentgenio', symbol: 'Rg', number: 111, category: 'TRANSITION_METAL' },
+            { id: 'copernicium', name: 'Copernício', symbol: 'Cn', number: 112, category: 'TRANSITION_METAL' },
+            { id: 'nihonium', name: 'Nihônio', symbol: 'Nh', number: 113, category: 'TRANSITION_METAL' },
+            { id: 'flerovium', name: 'Fleróvio', symbol: 'Fl', number: 114, category: 'TRANSITION_METAL' },
+            { id: 'moscovium', name: 'Moscóvio', symbol: 'Mc', number: 115, category: 'TRANSITION_METAL' },
+            { id: 'livermorium', name: 'Livermório', symbol: 'Lv', number: 116, category: 'TRANSITION_METAL' },
+            { id: 'tennessine', name: 'Tennessino', symbol: 'Ts', number: 117, category: 'TRANSITION_METAL' },
+            { id: 'oganesson', name: 'Oganessônio', symbol: 'Og', number: 118, category: 'NOBLE_GAS' },
+
+            // Compostos descobríveis. São itens do laboratório, não elementos da tabela periódica.
+            { id: 'methane', name: 'Metano', symbol: 'CH₄', number: 0, category: 'ORGANIC_COMPOUND', desc: 'Hidrocarboneto simples.' },
+            { id: 'salt', name: 'Cloreto de sódio', symbol: 'NaCl', number: 0, category: 'INORGANIC_COMPOUND', desc: 'Sal de cozinha.' },
+            { id: 'water', name: 'Água', symbol: 'H₂O', number: 0, category: 'INORGANIC_COMPOUND', desc: 'Composto formado por hidrogênio e oxigênio.' },
+            { id: 'carbon_dioxide', name: 'Dióxido de carbono', symbol: 'CO₂', number: 0, category: 'INORGANIC_COMPOUND', desc: 'Óxido de carbono muito comum.' },
+            { id: 'carbon_monoxide', name: 'Monóxido de carbono', symbol: 'CO', number: 0, category: 'INORGANIC_COMPOUND', desc: 'Óxido de carbono.' },
+            { id: 'ammonia', name: 'Amônia', symbol: 'NH₃', number: 0, category: 'INORGANIC_COMPOUND', desc: 'Base molecular de nitrogênio e hidrogênio.' },
+            { id: 'hydrogen_peroxide', name: 'Peróxido de hidrogênio', symbol: 'H₂O₂', number: 0, category: 'INORGANIC_COMPOUND', desc: 'Peróxido conhecido como água oxigenada.' },
+            { id: 'hydrochloric_acid', name: 'Ácido clorídrico', symbol: 'HCl', number: 0, category: 'INORGANIC_COMPOUND', desc: 'Ácido mineral de hidrogênio e cloro.' },
+            { id: 'nitric_acid', name: 'Ácido nítrico', symbol: 'HNO₃', number: 0, category: 'INORGANIC_COMPOUND', desc: 'Ácido oxigenado do nitrogênio.' },
+            { id: 'sulfuric_acid', name: 'Ácido sulfúrico', symbol: 'H₂SO₄', number: 0, category: 'INORGANIC_COMPOUND', desc: 'Ácido oxigenado do enxofre.' },
+            { id: 'sulfur_dioxide', name: 'Dióxido de enxofre', symbol: 'SO₂', number: 0, category: 'INORGANIC_COMPOUND', desc: 'Óxido de enxofre.' },
+            { id: 'sulfur_trioxide', name: 'Trióxido de enxofre', symbol: 'SO₃', number: 0, category: 'INORGANIC_COMPOUND', desc: 'Óxido de enxofre.' },
+            { id: 'sodium_hydroxide', name: 'Hidróxido de sódio', symbol: 'NaOH', number: 0, category: 'INORGANIC_COMPOUND', desc: 'Base forte.' },
+            { id: 'calcium_carbonate', name: 'Carbonato de cálcio', symbol: 'CaCO₃', number: 0, category: 'INORGANIC_COMPOUND', desc: 'Sal mineral presente em calcário e conchas.' },
+            { id: 'silicon_dioxide', name: 'Dióxido de silício', symbol: 'SiO₂', number: 0, category: 'INORGANIC_COMPOUND', desc: 'Principal componente da sílica.' },
+            { id: 'ozone', name: 'Ozônio', symbol: 'O₃', number: 0, category: 'INORGANIC_COMPOUND', desc: 'Forma triatômica do oxigênio.' },
+            { id: 'ethanol', name: 'Etanol', symbol: 'C₂H₅OH', number: 0, category: 'ORGANIC_COMPOUND', desc: 'Álcool etílico.' },
+            { id: 'acetic_acid', name: 'Ácido acético', symbol: 'CH₃COOH', number: 0, category: 'ORGANIC_COMPOUND', desc: 'Ácido orgânico presente no vinagre.' },
+            { id: 'glucose', name: 'Glicose', symbol: 'C₆H₁₂O₆', number: 0, category: 'ORGANIC_COMPOUND', desc: 'Açúcar simples fundamental ao metabolismo.' },
+            { id: 'benzene', name: 'Benzeno', symbol: 'C₆H₆', number: 0, category: 'ORGANIC_COMPOUND', desc: 'Hidrocarboneto aromático.' },
+            { id: 'acetone', name: 'Acetona', symbol: 'C₃H₆O', number: 0, category: 'ORGANIC_COMPOUND', desc: 'Cetona orgânica comum.' },
+            { id: 'urea', name: 'Ureia', symbol: 'CH₄N₂O', number: 0, category: 'ORGANIC_COMPOUND', desc: 'Composto nitrogenado amplamente usado em fertilizantes.' },
+            { id: 'caffeine', name: 'Cafeína', symbol: 'C₈H₁₀N₄O₂', number: 0, category: 'PHARMACEUTICAL', desc: 'Alcaloide estimulante presente em café e chá.' },
+            { id: 'aspirin', name: 'Ácido acetilsalicílico', symbol: 'C₉H₈O₄', number: 0, category: 'PHARMACEUTICAL', desc: 'Composto farmacêutico conhecido como aspirina.' }
+        ];
+
+        // Descrições dos elementos: usadas também no grimório quando o jogador
+        // clica em um elemento já descoberto. Compostos mantêm suas descrições
+        // próprias definidas acima.
+        const ELEMENT_DESCRIPTIONS = {
+            proton: 'Partícula subatômica de carga positiva presente no núcleo dos átomos.',
+            electron: 'Partícula subatômica de carga negativa que participa das ligações químicas.',
+            neutron: 'Partícula subatômica sem carga elétrica, encontrada no núcleo dos átomos.',
+            heat: 'Energia térmica usada pelo laboratório para ativar ou transformar materiais.',
+            electricity: 'Energia elétrica usada para provocar processos e transformações no laboratório.',
+            fusion: 'Processo nuclear de gameplay que permite transmutar elementos em núcleos mais pesados.',
+            hydrogen: 'Elemento mais leve e o mais abundante do Universo; participa de inúmeras moléculas.',
+            helium: 'Gás nobre muito leve e pouco reativo, conhecido por ser usado em balões e criogenia.',
+            lithium: 'Metal alcalino leve, usado em baterias e em diversas aplicações industriais.',
+            beryllium: 'Metal leve e rígido, usado em ligas especiais e aplicações aeroespaciais.',
+            boron: 'Semimetal importante para vidros, cerâmicas, detergentes e materiais resistentes ao calor.',
+            carbon: 'Elemento fundamental para a química orgânica e para a vida conhecida.',
+            nitrogen: 'Gás que compõe a maior parte da atmosfera terrestre e é essencial às moléculas biológicas.',
+            oxygen: 'Gás essencial à respiração de muitos seres vivos e às reações de combustão.',
+            fluorine: 'Halogênio extremamente reativo, presente em compostos usados em diversas aplicações.',
+            neon: 'Gás nobre conhecido pelo brilho característico de lâmpadas e letreiros luminosos.',
+            sodium: 'Metal alcalino muito reativo, conhecido por formar sais importantes como o cloreto de sódio.',
+            magnesium: 'Metal leve envolvido em processos biológicos e usado em ligas metálicas.',
+            aluminium: 'Metal leve e resistente à corrosão, muito usado em embalagens, estruturas e transportes.',
+            silicon: 'Elemento fundamental para semicondutores, vidros e diversos materiais tecnológicos.',
+            phosphorus: 'Elemento essencial aos seres vivos, presente em moléculas como ATP e DNA.',
+            sulfur: 'Elemento amarelo usado em fertilizantes, ácido sulfúrico e diversos processos industriais.',
+            chlorine: 'Halogênio reativo usado, entre outras aplicações, no tratamento de água e na produção de compostos.',
+            argon: 'Gás nobre inerte usado em iluminação, soldagem e atmosferas protetoras.',
+            potassium: 'Metal alcalino muito reativo e também um nutriente essencial para os organismos.',
+            calcium: 'Metal alcalino-terroso importante para ossos, dentes e muitos materiais minerais.',
+            scandium: 'Metal de transição raro, usado principalmente em ligas especiais e aplicações tecnológicas.',
+            titanium: 'Metal forte, leve e resistente à corrosão, muito usado em ligas e implantes.',
+            vanadium: 'Metal de transição usado principalmente para melhorar a resistência de ligas metálicas.',
+            chromium: 'Metal conhecido pela resistência à corrosão e pelo uso em revestimentos e aços inoxidáveis.',
+            manganese: 'Metal importante na fabricação de ligas e também presente em processos biológicos.',
+            iron: 'Metal abundante e fundamental para a siderurgia; também participa do transporte de oxigênio no sangue.',
+            cobalt: 'Metal de transição usado em ligas, pigmentos e materiais para baterias.',
+            nickel: 'Metal resistente à corrosão usado em ligas, revestimentos e componentes tecnológicos.',
+            copper: 'Metal excelente condutor de eletricidade, amplamente usado em fios e componentes.',
+            zinc: 'Metal usado em galvanização, ligas e processos biológicos essenciais.',
+            gallium: 'Metal que pode derreter próximo à temperatura ambiente e é usado em semicondutores.',
+            germanium: 'Semimetal usado em semicondutores, fibras ópticas e dispositivos eletrônicos.',
+            arsenic: 'Elemento tóxico presente em diversos minerais e usado em algumas aplicações tecnológicas.',
+            selenium: 'Elemento usado em eletrônica, vidro e fotocélulas; também é micronutriente em pequenas quantidades.',
+            bromine: 'Halogênio líquido à temperatura ambiente, usado em diversos compostos industriais.',
+            krypton: 'Gás nobre usado em iluminação e em algumas aplicações ópticas.',
+            rubidium: 'Metal alcalino muito reativo, utilizado principalmente em pesquisa e aplicações especializadas.',
+            strontium: 'Metal alcalino-terroso usado em materiais pirotécnicos e em algumas aplicações industriais.',
+            yttrium: 'Metal usado em materiais cerâmicos, lasers e componentes eletrônicos.',
+            zirconium: 'Metal resistente à corrosão, importante em ligas e em aplicações nucleares.',
+            niobium: 'Metal usado para produzir ligas muito resistentes e em aplicações supercondutoras.',
+            molybdenum: 'Metal resistente a altas temperaturas, usado em ligas e equipamentos industriais.',
+            technetium: 'Elemento radioativo sem isótopos estáveis, conhecido por aplicações em medicina nuclear.',
+            ruthenium: 'Metal de transição usado em catalisadores, eletrônica e ligas especiais.',
+            rhodium: 'Metal raro e resistente à corrosão, muito valorizado em catalisadores automotivos.',
+            palladium: 'Metal raro usado em catalisadores, eletrônica e diversas reações químicas.',
+            silver: 'Metal precioso e excelente condutor elétrico, usado em joias, contatos e materiais tecnológicos.',
+            cadmium: 'Metal tóxico usado historicamente em baterias, pigmentos e revestimentos.',
+            indium: 'Metal macio usado em semicondutores e em revestimentos transparentes condutores.',
+            tin: 'Metal usado em soldas, revestimentos e diversas ligas.',
+            antimony: 'Semimetal usado em ligas, retardantes de chama e alguns materiais eletrônicos.',
+            tellurium: 'Semimetal usado em ligas, materiais termoelétricos e algumas aplicações eletrônicas.',
+            iodine: 'Halogênio essencial à produção de hormônios da tireoide e usado em diversas aplicações médicas.',
+            xenon: 'Gás nobre pesado usado em flashes, lâmpadas especiais e algumas aplicações médicas.',
+            caesium: 'Metal alcalino extremamente reativo, conhecido também pelo uso em relógios atômicos.',
+            barium: 'Metal alcalino-terroso usado em materiais especiais e em compostos empregados em exames médicos.',
+            lanthanum: 'Lantanídeo usado em lentes, catalisadores e materiais para baterias.',
+            cerium: 'Lantanídeo usado em catalisadores, polimento de vidro e ligas especiais.',
+            praseodymium: 'Lantanídeo usado em ímãs, vidros especiais e ligas.',
+            neodymium: 'Lantanídeo conhecido por formar ímãs permanentes muito fortes.',
+            promethium: 'Lantanídeo radioativo raro, sem isótopos estáveis, usado principalmente em pesquisa.',
+            samarium: 'Lantanídeo usado em ímãs, materiais especiais e algumas aplicações nucleares.',
+            europium: 'Lantanídeo conhecido por seus compostos luminescentes usados em telas e iluminação.',
+            gadolinium: 'Lantanídeo magnético usado em materiais especiais e em contraste para algumas técnicas de imagem.',
+            terbium: 'Lantanídeo usado em fósforos, dispositivos eletrônicos e materiais magnéticos.',
+            dysprosium: 'Lantanídeo usado em ímãs de alto desempenho e materiais que suportam altas temperaturas.',
+            holmium: 'Lantanídeo com propriedades magnéticas marcantes, usado em lasers e materiais especiais.',
+            erbium: 'Lantanídeo importante para fibras ópticas e alguns lasers.',
+            thulium: 'Lantanídeo raro usado em algumas fontes de radiação e aplicações especializadas.',
+            ytterbium: 'Lantanídeo usado em lasers, relógios atômicos e materiais especiais.',
+            lutetium: 'Lantanídeo denso usado em aplicações médicas, catalíticas e de pesquisa.',
+            hafnium: 'Metal resistente a altas temperaturas, usado em ligas e em aplicações nucleares.',
+            tantalum: 'Metal muito resistente à corrosão, usado em componentes eletrônicos e aplicações médicas.',
+            tungsten: 'Metal de altíssimo ponto de fusão, usado em ligas e aplicações de alta temperatura.',
+            rhenium: 'Metal raro com excelente resistência ao calor, usado em superligas e catalisadores.',
+            osmium: 'Metal extremamente denso e duro, usado em algumas ligas e aplicações especializadas.',
+            iridium: 'Metal muito resistente à corrosão, usado em componentes especiais e catalisadores.',
+            platinum: 'Metal precioso e excelente catalisador, usado em joias, laboratório e indústria.',
+            gold: 'Metal precioso, pouco reativo e excelente condutor, valorizado em joias e eletrônica.',
+            mercury: 'Metal que é líquido à temperatura ambiente e apresenta alta toxicidade.',
+            thallium: 'Metal pesado e tóxico, usado apenas em aplicações especializadas.',
+            lead: 'Metal pesado e denso, historicamente usado em baterias, proteção contra radiação e outras aplicações.',
+            bismuth: 'Metal pesado relativamente pouco tóxico, conhecido por seus cristais coloridos e ligas especiais.',
+            polonium: 'Elemento radioativo raro, descoberto no final do século XIX.',
+            astatine: 'Halogênio extremamente raro e radioativo, encontrado apenas em quantidades minúsculas na natureza.',
+            radon: 'Gás nobre radioativo formado naturalmente pelo decaimento de elementos pesados no solo.',
+            francium: 'Metal alcalino extremamente raro e radioativo, presente na natureza em quantidades ínfimas.',
+            radium: 'Metal alcalino-terroso radioativo encontrado em pequenas quantidades em minerais de urânio.',
+            actinium: 'Metal radioativo que dá nome à série dos actinídeos.',
+            thorium: 'Metal radioativo encontrado naturalmente e estudado como possível combustível nuclear.',
+            protactinium: 'Elemento radioativo raro encontrado em pequenas quantidades em minerais de urânio.',
+            uranium: 'Metal radioativo natural, conhecido por seu uso como combustível em reatores nucleares.',
+            neptunium: 'Elemento radioativo artificial produzido principalmente em processos nucleares.',
+            plutonium: 'Elemento radioativo pesado produzido em reatores e conhecido por aplicações nucleares.',
+            americium: 'Elemento radioativo artificial usado, entre outras aplicações, em alguns detectores de fumaça.',
+            curium: 'Elemento radioativo artificial produzido em laboratório e usado principalmente em pesquisa.',
+            berkelium: 'Elemento radioativo artificial criado em laboratório e utilizado em pesquisa nuclear.',
+            californium: 'Elemento radioativo artificial usado em fontes de nêutrons e pesquisa.',
+            einsteinium: 'Elemento radioativo artificial extremamente raro, produzido em pequenas quantidades.',
+            fermium: 'Elemento radioativo artificial descoberto em resíduos de testes nucleares e produzido em laboratório.',
+            mendelevium: 'Elemento radioativo artificial criado em laboratório e usado em pesquisa nuclear.',
+            nobelium: 'Elemento radioativo artificial produzido em aceleradores e estudado em pesquisa.',
+            lawrencium: 'Elemento radioativo artificial e muito instável, produzido em aceleradores.',
+            rutherfordium: 'Elemento superpesado artificial, altamente instável e produzido em aceleradores.',
+            dubnium: 'Elemento superpesado artificial, produzido em aceleradores e de vida muito curta.',
+            seaborgium: 'Elemento superpesado artificial, produzido em laboratório e extremamente instável.',
+            bohrium: 'Elemento superpesado artificial, produzido em aceleradores e altamente radioativo.',
+            hassium: 'Elemento superpesado artificial, muito instável e conhecido apenas por poucos átomos produzidos.',
+            meitnerium: 'Elemento superpesado artificial, produzido em quantidades extremamente pequenas.',
+            darmstadtium: 'Elemento superpesado artificial, extremamente instável e produzido em aceleradores.',
+            roentgenium: 'Elemento superpesado artificial, conhecido apenas por alguns poucos átomos.',
+            copernicium: 'Elemento superpesado artificial, muito instável e produzido em laboratório.',
+            nihonium: 'Elemento superpesado artificial, extremamente raro e radioativo.',
+            flerovium: 'Elemento superpesado artificial, produzido em aceleradores e de vida muito curta.',
+            moscovium: 'Elemento superpesado artificial, produzido em laboratório e altamente instável.',
+            livermorium: 'Elemento superpesado artificial, produzido em aceleradores e altamente radioativo.',
+            tennessine: 'Halogênio superpesado artificial, extremamente instável e produzido em laboratório.',
+            oganesson: 'Gás nobre superpesado artificial, extremamente instável e conhecido apenas por poucos átomos.'
+        };
+
+        ELEMENTS.forEach(el => {
+            if (!el.desc && ELEMENT_DESCRIPTIONS[el.id]) el.desc = ELEMENT_DESCRIPTIONS[el.id];
+        });
+
+        const RECIPES = [
+            // ==================== FUNDAMENTOS / FÍSICA ====================
+            // Reações de núcleo são tratadas como "transmutação" de gameplay:
+            // o item Fusão representa uma fonte de energia/processo nuclear, não
+            // uma reação química comum.
+            { ingredients: ['proton', 'electron'], result: 'hydrogen' },
+            { ingredients: ['fusion', 'hydrogen'], result: 'helium' },
+
+            // ==================== QUÍMICA INORGÂNICA ====================
+            { ingredients: ['hydrogen', 'oxygen'], result: 'water' },
+            { ingredients: ['hydrogen', 'nitrogen'], result: 'ammonia' },
+            { ingredients: ['carbon', 'oxygen'], result: 'carbon_dioxide' },
+            { ingredients: ['carbon', 'heat'], result: 'carbon_monoxide' },
+            { ingredients: ['hydrogen', 'chlorine'], result: 'hydrochloric_acid' },
+            { ingredients: ['sulfur', 'oxygen'], result: 'sulfur_dioxide' },
+            { ingredients: ['sulfur_dioxide', 'oxygen'], result: 'sulfur_trioxide' },
+            { ingredients: ['sulfur_trioxide', 'water'], result: 'sulfuric_acid' },
+            { ingredients: ['nitrogen', 'oxygen'], result: 'nitric_acid' },
+            { ingredients: ['water', 'electricity'], result: 'oxygen' },
+            { ingredients: ['ammonia', 'heat'], result: 'nitrogen' },
+            { ingredients: ['water', 'oxygen'], result: 'hydrogen_peroxide' },
+            { ingredients: ['sodium', 'chlorine'], result: 'salt' },
+            { ingredients: ['sodium', 'water'], result: 'sodium_hydroxide' },
+            { ingredients: ['calcium', 'carbon_dioxide'], result: 'calcium_carbonate' },
+            { ingredients: ['silicon', 'oxygen'], result: 'silicon_dioxide' },
+            { ingredients: ['oxygen', 'electricity'], result: 'ozone' },
+
+            // ==================== QUÍMICA ORGÂNICA ====================
+            { ingredients: ['carbon', 'hydrogen'], result: 'methane' },
+            { ingredients: ['methane', 'oxygen'], result: 'carbon_monoxide' },
+            { ingredients: ['methane', 'water'], result: 'ethanol' },
+            { ingredients: ['ethanol', 'oxygen'], result: 'acetic_acid' },
+            { ingredients: ['methane', 'carbon'], result: 'benzene' },
+            { ingredients: ['ethanol', 'heat'], result: 'acetone' },
+            { ingredients: ['ammonia', 'carbon_dioxide'], result: 'urea' },
+            { ingredients: ['urea', 'heat'], result: 'caffeine' },
+            { ingredients: ['acetic_acid', 'benzene'], result: 'aspirin' },
+            { ingredients: ['carbon_dioxide', 'water'], result: 'glucose' },
+
+            // ==================== ROTAS ALTERNATIVAS / PROCESSOS ====================
+            { ingredients: ['methane', 'heat'], result: 'carbon' },
+            { ingredients: ['water', 'heat'], result: 'hydrogen' },
+            { ingredients: ['salt', 'electricity'], result: 'sodium' },
+
+            // ==================== TRANSMUTAÇÃO NUCLEAR ====================
+            // A partir daqui, Fusão, Calor e Protón são processos especiais do jogo. As combinações
+            // não pretendem representar reações químicas reais: elas simbolizam
+            // a síntese/transmutação de núcleos cada vez mais pesados.
+            { ingredients: ['fusion', 'helium'], result: 'lithium' },
+            { ingredients: ['proton', 'lithium'], result: 'beryllium' },
+            { ingredients: ['heat', 'beryllium'], result: 'boron' },
+            { ingredients: ['fusion', 'boron'], result: 'carbon' },
+            { ingredients: ['fusion', 'carbon'], result: 'nitrogen' },
+            { ingredients: ['proton', 'nitrogen'], result: 'oxygen' },
+            { ingredients: ['proton', 'oxygen'], result: 'fluorine' },
+            { ingredients: ['heat', 'fluorine'], result: 'neon' },
+            { ingredients: ['fusion', 'neon'], result: 'sodium' },
+            { ingredients: ['fusion', 'sodium'], result: 'magnesium' },
+            { ingredients: ['fusion', 'magnesium'], result: 'aluminium' },
+            { ingredients: ['proton', 'aluminium'], result: 'silicon' },
+            { ingredients: ['proton', 'silicon'], result: 'phosphorus' },
+            { ingredients: ['fusion', 'phosphorus'], result: 'sulfur' },
+            { ingredients: ['proton', 'sulfur'], result: 'chlorine' },
+            { ingredients: ['proton', 'chlorine'], result: 'argon' },
+            { ingredients: ['fusion', 'argon'], result: 'potassium' },
+            { ingredients: ['proton', 'potassium'], result: 'calcium' },
+            { ingredients: ['proton', 'calcium'], result: 'scandium' },
+            { ingredients: ['proton', 'scandium'], result: 'titanium' },
+            { ingredients: ['fusion', 'titanium'], result: 'vanadium' },
+            { ingredients: ['heat', 'vanadium'], result: 'chromium' },
+            { ingredients: ['heat', 'chromium'], result: 'manganese' },
+            { ingredients: ['fusion', 'manganese'], result: 'iron' },
+            { ingredients: ['fusion', 'iron'], result: 'cobalt' },
+            { ingredients: ['fusion', 'cobalt'], result: 'nickel' },
+            { ingredients: ['fusion', 'nickel'], result: 'copper' },
+            { ingredients: ['fusion', 'copper'], result: 'zinc' },
+            { ingredients: ['proton', 'zinc'], result: 'gallium' },
+            { ingredients: ['proton', 'gallium'], result: 'germanium' },
+            { ingredients: ['heat', 'germanium'], result: 'arsenic' },
+            { ingredients: ['proton', 'arsenic'], result: 'selenium' },
+            { ingredients: ['proton', 'selenium'], result: 'bromine' },
+            { ingredients: ['proton', 'bromine'], result: 'krypton' },
+            { ingredients: ['proton', 'krypton'], result: 'rubidium' },
+            { ingredients: ['proton', 'rubidium'], result: 'strontium' },
+            { ingredients: ['proton', 'strontium'], result: 'yttrium' },
+            { ingredients: ['fusion', 'yttrium'], result: 'zirconium' },
+            { ingredients: ['fusion', 'zirconium'], result: 'niobium' },
+            { ingredients: ['fusion', 'niobium'], result: 'molybdenum' },
+            { ingredients: ['fusion', 'molybdenum'], result: 'technetium' },
+            { ingredients: ['fusion', 'technetium'], result: 'ruthenium' },
+            { ingredients: ['fusion', 'ruthenium'], result: 'rhodium' },
+            { ingredients: ['fusion', 'rhodium'], result: 'palladium' },
+            { ingredients: ['fusion', 'palladium'], result: 'silver' },
+            { ingredients: ['fusion', 'silver'], result: 'cadmium' },
+            { ingredients: ['proton', 'cadmium'], result: 'indium' },
+            { ingredients: ['fusion', 'indium'], result: 'tin' },
+            { ingredients: ['proton', 'tin'], result: 'antimony' },
+            { ingredients: ['fusion', 'antimony'], result: 'tellurium' },
+            { ingredients: ['heat', 'tellurium'], result: 'iodine' },
+            { ingredients: ['proton', 'iodine'], result: 'xenon' },
+            { ingredients: ['proton', 'xenon'], result: 'caesium' },
+            { ingredients: ['proton', 'caesium'], result: 'barium' },
+            { ingredients: ['proton', 'barium'], result: 'lanthanum' },
+            { ingredients: ['fusion', 'lanthanum'], result: 'cerium' },
+            { ingredients: ['fusion', 'cerium'], result: 'praseodymium' },
+            { ingredients: ['fusion', 'praseodymium'], result: 'neodymium' },
+            { ingredients: ['fusion', 'neodymium'], result: 'promethium' },
+            { ingredients: ['fusion', 'promethium'], result: 'samarium' },
+            { ingredients: ['fusion', 'samarium'], result: 'europium' },
+            { ingredients: ['fusion', 'europium'], result: 'gadolinium' },
+            { ingredients: ['fusion', 'gadolinium'], result: 'terbium' },
+            { ingredients: ['fusion', 'terbium'], result: 'dysprosium' },
+            { ingredients: ['fusion', 'dysprosium'], result: 'holmium' },
+            { ingredients: ['fusion', 'holmium'], result: 'erbium' },
+            { ingredients: ['fusion', 'erbium'], result: 'thulium' },
+            { ingredients: ['fusion', 'thulium'], result: 'ytterbium' },
+            { ingredients: ['fusion', 'ytterbium'], result: 'lutetium' },
+            { ingredients: ['proton', 'lutetium'], result: 'hafnium' },
+            { ingredients: ['fusion', 'hafnium'], result: 'tantalum' },
+            { ingredients: ['fusion', 'tantalum'], result: 'tungsten' },
+            { ingredients: ['fusion', 'tungsten'], result: 'rhenium' },
+            { ingredients: ['fusion', 'rhenium'], result: 'osmium' },
+            { ingredients: ['fusion', 'osmium'], result: 'iridium' },
+            { ingredients: ['fusion', 'iridium'], result: 'platinum' },
+            { ingredients: ['fusion', 'platinum'], result: 'gold' },
+            { ingredients: ['fusion', 'gold'], result: 'mercury' },
+            { ingredients: ['proton', 'mercury'], result: 'thallium' },
+            { ingredients: ['fusion', 'thallium'], result: 'lead' },
+            { ingredients: ['fusion', 'lead'], result: 'bismuth' },
+            { ingredients: ['fusion', 'bismuth'], result: 'polonium' },
+            { ingredients: ['proton', 'polonium'], result: 'astatine' },
+            { ingredients: ['heat', 'astatine'], result: 'radon' },
+            { ingredients: ['proton', 'radon'], result: 'francium' },
+            { ingredients: ['heat', 'francium'], result: 'radium' },
+            { ingredients: ['proton', 'radium'], result: 'actinium' },
+            { ingredients: ['fusion', 'actinium'], result: 'thorium' },
+            { ingredients: ['fusion', 'thorium'], result: 'protactinium' },
+            { ingredients: ['fusion', 'protactinium'], result: 'uranium' },
+            { ingredients: ['fusion', 'uranium'], result: 'neptunium' },
+            { ingredients: ['fusion', 'neptunium'], result: 'plutonium' },
+            { ingredients: ['fusion', 'plutonium'], result: 'americium' },
+            { ingredients: ['fusion', 'americium'], result: 'curium' },
+            { ingredients: ['fusion', 'curium'], result: 'berkelium' },
+            { ingredients: ['fusion', 'berkelium'], result: 'californium' },
+            { ingredients: ['fusion', 'californium'], result: 'einsteinium' },
+            { ingredients: ['fusion', 'einsteinium'], result: 'fermium' },
+            { ingredients: ['fusion', 'fermium'], result: 'mendelevium' },
+            { ingredients: ['fusion', 'mendelevium'], result: 'nobelium' },
+            { ingredients: ['fusion', 'nobelium'], result: 'lawrencium' },
+            { ingredients: ['proton', 'lawrencium'], result: 'rutherfordium' },
+            { ingredients: ['fusion', 'rutherfordium'], result: 'dubnium' },
+            { ingredients: ['fusion', 'dubnium'], result: 'seaborgium' },
+            { ingredients: ['fusion', 'seaborgium'], result: 'bohrium' },
+            { ingredients: ['fusion', 'bohrium'], result: 'hassium' },
+            { ingredients: ['proton', 'hassium'], result: 'meitnerium' },
+            { ingredients: ['fusion', 'meitnerium'], result: 'darmstadtium' },
+            { ingredients: ['fusion', 'darmstadtium'], result: 'roentgenium' },
+            { ingredients: ['proton', 'roentgenium'], result: 'copernicium' },
+            { ingredients: ['proton', 'copernicium'], result: 'nihonium' },
+            { ingredients: ['fusion', 'nihonium'], result: 'flerovium' },
+            { ingredients: ['fusion', 'flerovium'], result: 'moscovium' },
+            { ingredients: ['fusion', 'moscovium'], result: 'livermorium' },
+            { ingredients: ['fusion', 'livermorium'], result: 'tennessine' },
+            { ingredients: ['fusion', 'tennessine'], result: 'oganesson' }
+        ];
+
+        let state = { unlocked: new Set(), reactor: [null, null], activeCategory: 'ALL', audioMuted: false, hintIndex: 0 };
+
+        let audioCtx = null;
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        function playSound(type) {
+            if (state.audioMuted) return;
+            try {
+                initAudio();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const now = audioCtx.currentTime;
+                if (type === 'select') {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(440, now);
+                    osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
+                    gain.gain.setValueAtTime(0.15, now);
+                    gain.gain.linearRampToValueAtTime(0, now + 0.08);
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.start(now); osc.stop(now + 0.08);
+                } else if (type === 'success') {
+                    const notes = [523.25, 659.25, 783.99, 1046.50];
+                    notes.forEach((freq, idx) => {
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        osc.type = 'triangle';
+                        osc.frequency.setValueAtTime(freq, now + idx * 0.07);
+                        gain.gain.setValueAtTime(0.2, now + idx * 0.07);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.07 + 0.3);
+                        osc.connect(gain); gain.connect(audioCtx.destination);
+                        osc.start(now + idx * 0.07); osc.stop(now + idx * 0.07 + 0.3);
+                    });
+                } else if (type === 'fail') {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(180, now);
+                    osc.frequency.linearRampToValueAtTime(110, now + 0.25);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.linearRampToValueAtTime(0.001, now + 0.25);
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.start(now); osc.stop(now + 0.25);
+                }
+            } catch(e) {}
+        }
+        function toggleAudio() {
+            state.audioMuted = !state.audioMuted;
+            document.getElementById('audio-icon').className = state.audioMuted ? 'fa-solid fa-volume-xmark text-xs' : 'fa-solid fa-volume-high text-xs';
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            loadGame();
+            renderCategoryTabs();
+            renderElementsGrid();
+            updateReactorUI();
+            updateProgress();
+            initCanvasParticles();
+        });
+
+        function getInitialUnlocked() {
+            return new Set(ELEMENTS.filter(e => e.initial).map(e => e.id));
+        }
+        function loadGame() {
+            try {
+                const saved = localStorage.getItem('periodic_alchemy_save');
+                const initial = getInitialUnlocked();
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    state.unlocked = new Set(Array.isArray(parsed) ? parsed : []);
+                    // Os itens iniciais sempre existem, mesmo em saves antigos ou corrompidos.
+                    initial.forEach(id => state.unlocked.add(id));
+                    saveGame();
+                } else {
+                    initDefaultUnlocked();
+                }
+            } catch(e) {
+                initDefaultUnlocked();
+            }
+        }
+        function initDefaultUnlocked() {
+            state.unlocked = getInitialUnlocked();
+            saveGame();
+        }
+        function saveGame() {
+            try { localStorage.setItem('periodic_alchemy_save', JSON.stringify(Array.from(state.unlocked))); } catch(e) {}
+        }
+        function confirmReset() {
+            const modal = document.getElementById('modal-reset');
+            if (!modal) return resetProgress();
+            modal.classList.remove('hidden');
+        }
+        function closeResetModal() {
+            const modal = document.getElementById('modal-reset');
+            if (modal) modal.classList.add('hidden');
+        }
+        function resetProgress() {
+            localStorage.removeItem('periodic_alchemy_save');
+            state.reactor = [null, null];
+            state.activeCategory = 'ALL';
+            state.hintIndex = 0;
+            initDefaultUnlocked();
+            closeResetModal();
+            renderCategoryTabs();
+            renderElementsGrid();
+            updateReactorUI();
+            updateProgress();
+            playSound('select');
+        }
+
+        /* ==================== CORE MECHANICS ==================== */
+        function addToReactor(elementId) {
+            playSound('select');
+            if (!state.reactor[0]) state.reactor[0] = elementId;
+            else if (!state.reactor[1]) state.reactor[1] = elementId;
+            else {
+                state.reactor[0] = state.reactor[1];
+                state.reactor[1] = elementId;
+            }
+            updateReactorUI();
+        }
+        function removeFromReactor(index) {
+            if (state.reactor[index]) {
+                playSound('select');
+                state.reactor[index] = null;
+                updateReactorUI();
+            }
+        }
+        function clearReactor() {
+            if (state.reactor[0] || state.reactor[1]) {
+                playSound('select');
+                state.reactor = [null, null];
+                updateReactorUI();
+            }
+        }
+        function updateReactorUI() {
+            for (let i = 0; i < 2; i++) {
+                const slot = document.getElementById(`slot-${i}`);
+                const content = slot.querySelector('.slot-content');
+                const elId = state.reactor[i];
+                if (elId) {
+                    const el = ELEMENTS.find(e => e.id === elId);
+                    if (!el) {
+                        console.error('Elemento inexistente no reator:', elId);
+                        state.reactor[i] = null;
+                        slot.className = 'w-20 h-24 sm:w-24 sm:h-28 rounded-xl border-2 border-dashed border-slate-700/80 bg-slate-900/40 flex flex-col items-center justify-center p-2 relative cursor-pointer hover:border-cyan-500/50';
+                        content.innerHTML = '<i class="fa-solid fa-plus text-slate-700 text-lg"></i>';
+                        continue;
+                    }
+                    const category = CATEGORIES[el.category] || CATEGORIES.FUNDAMENTAL;
+                    slot.className = `w-20 h-24 sm:w-24 sm:h-28 rounded-xl border-2 bg-slate-900/90 flex flex-col items-center justify-center p-2 relative ${category.color} glow-cyan animate-pop`;
+                    content.innerHTML = `
+                        <span class="text-xl sm:text-2xl font-orbitron font-extrabold">${el.symbol}</span>
+                        <span class="text-[10px] font-bold mt-1 truncate max-w-full text-slate-200">${el.name}</span>
+                        ${el.number ? `<span class="text-[9px] text-slate-400 mt-0.5">#${el.number}</span>` : ''}
+                    `;
+                } else {
+                    slot.className = 'w-20 h-24 sm:w-24 sm:h-28 rounded-xl border-2 border-dashed border-slate-700/80 bg-slate-900/40 flex flex-col items-center justify-center p-2 relative cursor-pointer hover:border-cyan-500/50';
+                    content.innerHTML = '<i class="fa-solid fa-plus text-slate-700 text-lg"></i>';
+                }
+            }
+        }
+        function synthesize() {
+            const [ingA, ingB] = state.reactor;
+            if (!ingA || !ingB) { playSound('fail'); return; }
+
+            const sortedInput = [ingA, ingB].sort();
+            const match = RECIPES.find(r => {
+                const sortedReq = [...r.ingredients].sort();
+                return sortedReq[0] === sortedInput[0] && sortedReq[1] === sortedInput[1];
+            });
+
+            const resultEl = match ? ELEMENTS.find(e => e.id === match.result) : null;
+            const validResult = !!resultEl;
+
+            // A colisão acontece antes de qualquer resultado aparecer.
+            runReactionAnimation(validResult, () => {
+                if (validResult) {
+                    const wasNew = !state.unlocked.has(resultEl.id);
+                    state.unlocked.add(resultEl.id);
+                    saveGame();
+                    playSound('success');
+                    spawnBurstParticles();
+
+                    if (wasNew) {
+                        showDiscoveryModal(resultEl, [ingA, ingB]);
+                    } else {
+                        showReactionMessage(resultEl, [ingA, ingB]);
+                    }
+
+                    state.reactor = [null, null];
+                    updateReactorUI();
+                    renderElementsGrid();
+                    updateProgress();
+                } else {
+                    playSound('fail');
+                    // Em uma combinação inválida, os ingredientes voltam ao lugar.
+                    updateReactorUI();
+                }
+            });
+        }
+
+        function runReactionAnimation(success, callback) {
+            const stage = document.getElementById('reaction-stage');
+            const left = document.getElementById('slot-0');
+            const right = document.getElementById('slot-1');
+            const core = document.getElementById('reaction-core');
+
+            stage.classList.remove('reacting', 'success', 'fail');
+            void stage.offsetWidth;
+            stage.classList.add('reacting', success ? 'success' : 'fail');
+
+            left.classList.add('reactor-collision-left');
+            right.classList.add('reactor-collision-right');
+            core.className = `reaction-core ${success ? 'success' : 'fail'}`;
+
+            window.setTimeout(() => {
+                left.classList.remove('reactor-collision-left');
+                right.classList.remove('reactor-collision-right');
+                stage.classList.remove('reacting', 'success', 'fail');
+                core.className = 'reaction-core';
+                callback();
+            }, 760);
+        }
+
+        function showReactionMessage(el, ingredients) {
+            const modal = document.getElementById('modal-discovery');
+            modal.innerHTML = `
+                <div class="w-full max-w-sm glass-panel rounded-3xl p-6 border-2 border-indigo-500/50 flex flex-col items-center text-center animate-pop">
+                    <div class="text-[11px] font-orbitron tracking-widest text-indigo-300 uppercase font-bold mb-1">REAÇÃO CONCLUÍDA</div>
+                    <div class="w-28 h-32 rounded-2xl border-2 border-indigo-400 bg-slate-900/90 flex flex-col justify-between p-3 my-4 shadow-xl">
+                        <span class="text-[10px] font-orbitron text-slate-400">COMPOSTO</span>
+                        <span class="text-2xl font-orbitron font-extrabold text-indigo-300">${el.symbol}</span>
+                        <span class="text-xs font-bold text-slate-200 mt-1">${el.name}</span>
+                    </div>
+                    <div class="text-xs font-orbitron text-amber-300 bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/30 mb-5">
+                        ${ingredients.map(id => ELEMENTS.find(e=>e.id===id)?.name || id).join(' + ')}
+                    </div>
+                    <button onclick="closeDiscoveryModal()" class="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-orbitron text-xs font-black">CONTINUAR PESQUISA</button>
+                </div>`;
+            modal.classList.remove('hidden');
+        }
+
+        /* ==================== UI ==================== */
+        function renderCategoryTabs() {
+            const container = document.getElementById('category-tabs');
+            let html = `<button onclick="setCategory('ALL')" class="px-3 py-1 rounded-lg text-[10px] font-orbitron font-bold uppercase tracking-wider ${state.activeCategory === 'ALL' ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300' : 'border-slate-800 text-slate-400'}">TODOS</button>`;
+            Object.values(CATEGORIES).forEach(cat => {
+                html += `<button onclick="setCategory('${cat.id}')" class="px-3 py-1 rounded-lg text-[10px] font-orbitron font-bold uppercase tracking-wider ${state.activeCategory === cat.id ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300' : 'border-slate-800 text-slate-400'}">${cat.name}</button>`;
+            });
+            container.innerHTML = html;
+        }
+        function setCategory(catId) {
+            playSound('select');
+            state.activeCategory = catId;
+            renderCategoryTabs();
+            renderElementsGrid();
+        }
+        function renderElementsGrid() {
+            const grid = document.getElementById('elements-grid');
+            const unlockedList = ELEMENTS.filter(e => state.unlocked.has(e.id));
+            const filtered = state.activeCategory === 'ALL' ? unlockedList : unlockedList.filter(e => e.category === state.activeCategory);
+            grid.innerHTML = filtered.map(el => {
+                const cat = CATEGORIES[el.category] || CATEGORIES.FUNDAMENTAL;
+                return `
+                    <div onclick="addToReactor('${el.id}')" class="h-20 rounded-xl border bg-slate-900/80 p-1.5 flex flex-col justify-between items-center cursor-pointer active:scale-95 hover:border-cyan-400/80 ${cat.color}">
+                        <span class="text-[8px] text-slate-400 font-orbitron">${el.number ? '#' + el.number : ''}</span>
+                        <span class="text-lg sm:text-xl font-orbitron font-extrabold">${el.symbol}</span>
+                        <span class="text-[9px] font-semibold text-slate-300 truncate">${el.name}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+        function updateProgress() {
+            const count = state.unlocked.size;
+            document.getElementById('progress-text').innerText = `${count}/${ELEMENTS.length}`;
+        }
+
+        /* ==================== MODALS ==================== */
+        function switchTab(tab) {
+            playSound('select');
+            document.getElementById('modal-periodic').classList.add('hidden');
+            closeHint(false);
+            if (tab === 'periodic') {
+                document.getElementById('modal-periodic').classList.remove('hidden');
+                renderGrimoire();
+            }
+        }
+
+        function openHint() {
+            playSound('select');
+            const modal = document.getElementById('modal-hint');
+            modal.classList.remove('hidden');
+            generateHint();
+        }
+
+        function closeHint(play = true) {
+            const modal = document.getElementById('modal-hint');
+            if (!modal) return;
+            modal.classList.add('hidden');
+            if (play) playSound('select');
+        }
+
+        function showDiscoveryModal(el, ingredients) {
+            const modal = document.getElementById('modal-discovery');
+            modal.innerHTML = `
+                <div class="w-full max-w-sm glass-panel rounded-3xl p-6 border-2 border-cyan-500/50 flex flex-col items-center text-center animate-pop">
+                    <div class="text-[11px] font-orbitron tracking-widest text-cyan-400 uppercase font-bold mb-1">NOVA DESCOBERTA!</div>
+                    <div class="w-28 h-32 rounded-2xl border-2 border-cyan-400 bg-slate-900/90 flex flex-col justify-between p-3 my-4 shadow-xl">
+                        <span class="text-[10px] font-orbitron text-slate-400">${el.number ? '#' + el.number : 'COMPOSTO'}</span>
+                        <span class="element-formula text-cyan-300" style="font-size:${Math.max(12, Math.min(30, Math.floor(180 / Math.max(4, el.symbol.length))))}px">${el.symbol}</span>
+                        <span class="text-xs font-bold text-slate-200 mt-1">${el.name}</span>
+                    </div>
+                    <p class="text-xs text-slate-300 leading-relaxed mb-4">${el.desc || 'Novo elemento descoberto!'}</p>
+                    <div class="text-xs font-orbitron text-amber-300 bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/30 mb-5">Reação: ${ingredients.map(id => ELEMENTS.find(e=>e.id===id).name).join(' + ')}</div>
+                    <button onclick="closeDiscoveryModal()" class="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-orbitron text-xs font-black">CONTINUAR PESQUISA</button>
+                </div>
+            `;
+            modal.classList.remove('hidden');
+        }
+        function closeDiscoveryModal() {
+            document.getElementById('modal-discovery').classList.add('hidden');
+        }
+        function showElementInfo(id) {
+            const el = ELEMENTS.find(e => e.id === id);
+            if (!el || !state.unlocked.has(id)) return;
+
+            playSound('select');
+            const category = CATEGORIES[el.category] || CATEGORIES.FUNDAMENTAL;
+            const modal = document.getElementById('modal-element-info');
+            const card = document.getElementById('element-info-card');
+
+            card.innerHTML = `
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <div class="text-[10px] font-orbitron tracking-widest text-cyan-400 uppercase font-bold">INFORMAÇÃO DA DESCOBERTA</div>
+                        <h3 class="text-xl font-orbitron font-extrabold text-slate-100 mt-1">${el.name}</h3>
+                    </div>
+                    <button onclick="closeElementInfo()" class="w-9 h-9 rounded-xl glass-button text-slate-300">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-4 mb-4">
+                    <div class="w-28 h-28 rounded-2xl border-2 ${category.color} bg-slate-900/90 flex flex-col justify-between items-center p-3 shrink-0">
+                        <span class="text-[10px] text-slate-400">${el.number ? '#' + el.number : 'COMPOSTO'}</span>
+                        <span class="element-formula" style="font-size:${Math.max(12, Math.min(30, Math.floor(180 / Math.max(4, el.symbol.length))))}px">${el.symbol}</span>
+                        <span class="text-[9px] font-bold text-slate-300 text-center">${el.name}</span>
+                    </div>
+                    <div class="min-w-0">
+                        <div class="text-[9px] font-orbitron text-slate-500 uppercase mb-1">Categoria</div>
+                        <div class="text-xs font-bold text-slate-200">${category.name}</div>
+                        ${el.number ? `<div class="text-[9px] font-orbitron text-slate-500 uppercase mt-3 mb-1">Número atômico</div><div class="text-xs font-bold text-slate-200">${el.number}</div>` : ''}
+                    </div>
+                </div>
+
+                <div class="rounded-xl bg-slate-950/60 border border-slate-800 p-3">
+                    <div class="text-[9px] font-orbitron tracking-widest text-cyan-400 uppercase mb-2">SOBRE</div>
+                    <p class="text-xs text-slate-300 leading-relaxed">${el.desc || 'Nenhuma descrição disponível para esta descoberta.'}</p>
+                </div>
+
+                <button onclick="closeElementInfo()" class="w-full mt-4 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-orbitron text-xs font-black">
+                    VOLTAR À TABELA
+                </button>
+            `;
+            modal.classList.remove('hidden');
+        }
+
+        function closeElementInfo() {
+            document.getElementById('modal-element-info').classList.add('hidden');
+        }
+
+        function renderGrimoire() {
+            const container = document.getElementById('grimoire-list');
+            let html = '';
+            Object.values(CATEGORIES).forEach(cat => {
+                const catElements = ELEMENTS.filter(e => e.category === cat.id);
+                const unlockedCount = catElements.filter(e => state.unlocked.has(e.id)).length;
+                html += `
+                    <div class="glass-panel rounded-2xl p-3 border border-slate-800">
+                        <div class="flex justify-between items-center mb-2 pb-1 border-b border-slate-800">
+                            <span class="text-xs font-orbitron font-bold">${cat.name}</span>
+                            <span class="text-[10px] font-orbitron text-slate-400">${unlockedCount}/${catElements.length}</span>
+                        </div>
+                        <div class="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                `;
+                catElements.forEach(el => {
+                    const isUnlocked = state.unlocked.has(el.id);
+                    html += isUnlocked ? `
+                        <button type="button" onclick="showElementInfo('${el.id}')" class="h-16 rounded-xl border ${cat.color} bg-slate-900/80 p-1 flex flex-col justify-between items-center text-center cursor-pointer hover:scale-[1.03] hover:bg-slate-800/90 transition-transform">
+                            <span class="text-[8px] text-slate-400">${el.number ? '#' + el.number : ''}</span>
+                            <span class="text-base font-orbitron font-bold">${el.symbol}</span>
+                            <span class="text-[8px] font-medium text-slate-300 truncate max-w-full">${el.name}</span>
+                        </button>
+                    ` : `
+                        <div class="h-16 rounded-xl border border-slate-800 bg-slate-950/40 p-1 flex flex-col justify-center items-center text-slate-600">
+                            <i class="fa-solid fa-lock text-xs mb-1"></i>
+                            <span class="text-[8px] font-orbitron">???</span>
+                        </div>
+                    `;
+                });
+                html += `</div></div>`;
+            });
+            container.innerHTML = html;
+        }
+        let hintIndex = 0;
+        function generateHint() {
+            playSound('select');
+
+            const validRecipes = RECIPES.filter(r =>
+                ELEMENTS.some(e => e.id === r.result) &&
+                ELEMENTS.some(e => e.id === r.ingredients[0]) &&
+                ELEMENTS.some(e => e.id === r.ingredients[1])
+            );
+
+            const locked = validRecipes.filter(r => !state.unlocked.has(r.result));
+            const available = locked.filter(r =>
+                state.unlocked.has(r.ingredients[0]) &&
+                state.unlocked.has(r.ingredients[1])
+            );
+
+            const textEl = document.getElementById('hint-text');
+            const optionsEl = document.getElementById('hint-options');
+
+            if (!locked.length) {
+                textEl.innerHTML = '<strong class="text-emerald-300">Parabéns!</strong><br>Você já descobriu todos os itens desta versão.';
+                optionsEl.innerHTML = '';
+                return;
+            }
+
+            if (available.length) {
+                // Uma receita por resultado, sempre exatamente igual à que synthesize() usa.
+                const unique = available.filter((r, i, arr) =>
+                    arr.findIndex(x => x.result === r.result) === i
+                );
+                const choice = unique[hintIndex % unique.length];
+                hintIndex++;
+
+                const a = ELEMENTS.find(e => e.id === choice.ingredients[0]);
+                const b = ELEMENTS.find(e => e.id === choice.ingredients[1]);
+                const result = ELEMENTS.find(e => e.id === choice.result);
+
+                textEl.innerHTML = `Tente <strong class="text-cyan-300">${a.name} + ${b.name}</strong> <span class="text-slate-500">→</span> <strong class="text-emerald-300">${result.name} (${result.symbol})</strong>.`;
+                optionsEl.innerHTML = '';
+                return;
+            }
+
+            // Não há receita executável agora: mostra uma rota futura sem inventar resultado.
+            const next = locked.find(r => state.unlocked.has(r.ingredients[0]) || state.unlocked.has(r.ingredients[1]));
+            if (next) {
+                const knownId = state.unlocked.has(next.ingredients[0]) ? next.ingredients[0] : next.ingredients[1];
+                const neededId = knownId === next.ingredients[0] ? next.ingredients[1] : next.ingredients[0];
+                const known = ELEMENTS.find(e => e.id === knownId);
+                const needed = ELEMENTS.find(e => e.id === neededId);
+                const result = ELEMENTS.find(e => e.id === next.result);
+                textEl.innerHTML = `Você já possui <strong class="text-cyan-300">${known.name}</strong>. Procure desbloquear <strong class="text-amber-300">${needed.name}</strong>; então poderá tentar <strong class="text-emerald-300">${known.name} + ${needed.name}</strong>.`;
+            } else {
+                textEl.innerText = 'Nenhuma rota imediata foi encontrada. Experimente Calor, Eletricidade e Fusão Nuclear com elementos que você já possui.';
+            }
+            optionsEl.innerHTML = '';
+        }
+
+        /* ==================== PARTICLES ==================== */
+        let canvas, ctx, particles = [];
+        function initCanvasParticles() {
+            canvas = document.getElementById('particle-canvas');
+            ctx = canvas.getContext('2d');
+            function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+            window.addEventListener('resize', resize);
+            resize();
+            requestAnimationFrame(updateParticles);
+        }
+        function spawnBurstParticles() {
+            const x = window.innerWidth / 2;
+            const y = window.innerHeight * 0.35;
+            for (let i = 0; i < 40; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 2 + Math.random() * 6;
+                particles.push({
+                    x: x, y: y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+                    radius: 2 + Math.random() * 3, color: `hsl(${180 + Math.random() * 60}, 100%, 60%)`,
+                    alpha: 1, life: 0.02 + Math.random() * 0.02
+                });
+            }
+        }
+        function updateParticles() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx; p.y += p.vy; p.alpha -= p.life;
+                if (p.alpha <= 0) { particles.splice(i, 1); continue; }
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fillStyle = p.color; ctx.shadowBlur = 10; ctx.shadowColor = p.color;
+                ctx.fill();
+                ctx.restore();
+            }
+            requestAnimationFrame(updateParticles);
+        }
+    </script>
+</body>
+</html>
